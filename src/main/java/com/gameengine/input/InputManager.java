@@ -105,6 +105,13 @@ public class InputManager {
     public boolean isKeyJustPressed(int keyCode) {
         return justPressedKeys.contains(keyCode);
     }
+
+    /**
+     * 获取当前帧刚按下的所有按键的快照
+     */
+    public Set<Integer> getJustPressedKeysSnapshot() {
+        return new HashSet<>(justPressedKeys);
+    }
     
     /**
      * 检查鼠标按键是否被按下

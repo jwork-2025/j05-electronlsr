@@ -3,6 +3,7 @@ package com.gameengine.core;
 import com.gameengine.graphics.Renderer;
 import com.gameengine.input.InputManager;
 import com.gameengine.scene.Scene;
+import com.gameengine.recording.RecordingService;
 import javax.swing.Timer;
 
 /**
@@ -19,6 +20,7 @@ public class GameEngine {
     private String title;
     private Timer gameTimer;
     private GameLogic gameLogic;
+    private RecordingService recordingService;
     
     public GameEngine(int width, int height, String title) {
         this.title = title;
@@ -82,14 +84,20 @@ public class GameEngine {
             currentScene.update(deltaTime);
         }
         
+        // Update recording
+        if (recordingService != null && recordingService.isRecording()) {
+            recordingService.update(deltaTime, currentScene, inputManager);
+        }
+        
         // 处理事件
         renderer.pollEvents();
         
         // 检查退出条件
         if (inputManager.isKeyPressed(27)) { // ESC键
-            running = false;
-            gameTimer.stop();
-            renderer.cleanup();
+            // Don't stop engine on ESC, let scene handle it or stop explicitly
+            // running = false;
+            // gameTimer.stop();
+            // renderer.cleanup();
         }
         
         // 检查窗口是否关闭
@@ -144,6 +152,7 @@ public class GameEngine {
         if (gameLogic != null) {
             gameLogic.cleanup();
         }
+        disableRecording();
     }
     
     /**
@@ -154,6 +163,25 @@ public class GameEngine {
             currentScene.clear();
         }
         renderer.cleanup();
+        disableRecording();
+    }
+    
+    public void enableRecording(RecordingService service) {
+        this.recordingService = service;
+        try {
+            if (service != null && currentScene != null) {
+                service.start(currentScene, renderer.getWidth(), renderer.getHeight());
+            }
+        } catch (Exception e) {
+            System.err.println("Recording start failed: " + e.getMessage());
+        }
+    }
+
+    public void disableRecording() {
+        if (recordingService != null && recordingService.isRecording()) {
+            try { recordingService.stop(); } catch (Exception ignored) {}
+        }
+        recordingService = null;
     }
     
     /**

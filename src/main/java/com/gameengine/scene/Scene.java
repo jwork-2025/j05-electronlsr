@@ -84,6 +84,13 @@ public class Scene {
     public void addGameObject(GameObject gameObject) {
         objectsToAdd.add(gameObject);
     }
+
+    /**
+     * 从场景移除游戏对象
+     */
+    public void removeGameObject(GameObject gameObject) {
+        objectsToRemove.add(gameObject);
+    }
     
     /**
      * 根据组件类型查找游戏对象
