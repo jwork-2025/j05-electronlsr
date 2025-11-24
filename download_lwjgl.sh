@@ -65,7 +65,11 @@ extract_natives() {
 
 main() {
   detect_platform
-  classifier="${OS}-${ARCH}"
+  if [ "$ARCH" = "x86_64" ]; then
+    classifier="$OS"
+  else
+    classifier="${OS}-${ARCH}"
+  fi
   mkdir -p "$LIB_DIR"
   for m in "" "-glfw" "-opengl"; do
     download_module "$m" "$classifier"
