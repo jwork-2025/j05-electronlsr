@@ -106,7 +106,27 @@ public class RecordingService {
 
     private boolean writeKeyframe(Scene scene) {
         StringBuilder sb = new StringBuilder();
-        sb.append("{\"type\":\"keyframe\",\"t\":").append(qfmt.format(elapsed)).append(",\"entities\":[");
+        sb.append("{\"type\":\"keyframe\",\"t\":").append(qfmt.format(elapsed));
+
+        // Global State Reflection
+        try {
+            if (scene.getClass().getName().endsWith("GameScene")) {
+                Class<?> clz = scene.getClass();
+                java.lang.reflect.Field fScore = clz.getDeclaredField("score"); fScore.setAccessible(true);
+                java.lang.reflect.Field fFCD = clz.getDeclaredField("fireballCooldown"); fFCD.setAccessible(true);
+                java.lang.reflect.Field fBCD = clz.getDeclaredField("bombCooldown"); fBCD.setAccessible(true);
+                java.lang.reflect.Field fGO = clz.getDeclaredField("gameOver"); fGO.setAccessible(true);
+                
+                sb.append(",\"global\":{")
+                  .append("\"score\":").append(fScore.getInt(scene)).append(',')
+                  .append("\"fcd\":").append(qfmt.format(fFCD.getFloat(scene))).append(',')
+                  .append("\"bcd\":").append(qfmt.format(fBCD.getFloat(scene))).append(',')
+                  .append("\"over\":").append(fGO.getBoolean(scene))
+                  .append("}");
+            }
+        } catch (Exception ignored) {}
+
+        sb.append(",\"entities\":[");
         List<GameObject> objs = scene.getGameObjects();
         boolean first = true;
         int count = 0;
@@ -120,8 +140,8 @@ public class RecordingService {
             float y = tc.getPosition().y;
             if (!first) sb.append(',');
             
-            // Use Identity Hash Code to ensure uniqueness
-            String uniqueId = obj.getName() + "_" + System.identityHashCode(obj);
+            // Use Name + UUID to ensure uniqueness AND retain type info
+            String uniqueId = obj.getName() + "_" + obj.getUuid();
 
             sb.append('{')
               .append("\"id\":\"").append(uniqueId).append("\",")
@@ -130,6 +150,7 @@ public class RecordingService {
 
             com.gameengine.components.RenderComponent rc = obj.getComponent(com.gameengine.components.RenderComponent.class);
             if (rc != null) {
+                if (!rc.isVisible()) sb.append(",\"v\":0");
                 com.gameengine.components.RenderComponent.RenderType rt = rc.getRenderType();
                 com.gameengine.math.Vector2 sz = rc.getSize();
                 com.gameengine.components.RenderComponent.Color col = rc.getColor();
@@ -151,6 +172,7 @@ public class RecordingService {
             if (hc != null) {
                 sb.append(",\"hp\":").append(qfmt.format(hc.currentHealth))
                   .append(",\"maxHp\":").append(qfmt.format(hc.maxHealth));
+                if (hc.isInvincible) sb.append(",\"inv\":1");
             }
 
             sb.append('}');

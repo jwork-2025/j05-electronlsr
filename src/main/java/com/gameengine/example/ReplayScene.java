@@ -20,9 +20,16 @@ public class ReplayScene extends Scene {
     private Renderer renderer;
     private InputManager input;
     private float time;
+    private Keyframe.GlobalInfo currentGlobal;
     
     // Keyframe Structure
     private static class Keyframe {
+        static class GlobalInfo {
+            int score;
+            float fcd;
+            float bcd;
+            boolean over;
+        }
         static class EntityInfo {
             String id;
             Vector2 pos;
@@ -31,8 +38,11 @@ public class ReplayScene extends Scene {
             float r=1,g=1,b=1,a=1;
             float hp = -1;
             float maxHp = -1;
+            int v = 1; // Default visible
+            int inv = 0; // Default not invincible
         }
         double t;
+        GlobalInfo global;
         Map<String, EntityInfo> entities = new HashMap<>();
     }
 
@@ -57,6 +67,7 @@ public class ReplayScene extends Scene {
         this.time = 0f;
         this.keyframes.clear();
         this.activeObjects.clear();
+        this.currentGlobal = null;
         
         if (recordingPath != null) {
             loadRecording(recordingPath);
@@ -100,6 +111,8 @@ public class ReplayScene extends Scene {
             if (time >= k1.t && time <= k2.t) { a = k1; b = k2; break; }
         }
         
+        currentGlobal = a.global;
+        
         double span = Math.max(1e-6, b.t - a.t);
         double u = Math.min(1.0, Math.max(0.0, (time - a.t) / span));
         
@@ -108,7 +121,7 @@ public class ReplayScene extends Scene {
 
     @Override
     public void render() {
-        renderer.drawRect(0, 0, 800, 600, 0.05f, 0.05f, 0.1f, 1.0f);
+        renderer.drawRect(0, 0, 800, 600, 0.1f, 0.1f, 0.2f, 1.0f);
 
         if (recordingPath == null) {
             renderFileList();
@@ -117,9 +130,29 @@ public class ReplayScene extends Scene {
 
         super.render(); 
         renderHealthBars();
+        renderUI();
 
-        renderer.drawString("REPLAY MODE", 350, 30, 0.5f, 1f, 0.5f, 1f, 24);
-        renderer.drawString("Press ESC to Return", 330, 570, 0.8f, 0.8f, 0.8f, 1f, 20);
+        renderer.drawString("REPLAY MODE", 320, 30, 0.5f, 1f, 0.5f, 1f, 24);
+        renderer.drawString("Press ESC to Return", 310, 550, 0.8f, 0.8f, 0.8f, 1f, 20);
+    }
+    
+    private void renderUI() {
+        if (currentGlobal != null) {
+            renderer.drawString("Score: " + currentGlobal.score, 10, 30, 1, 1, 1, 1, 24);
+            
+            if (currentGlobal.fcd > 0) {
+                 String fcd = String.format("Fireball CD: %.1f", currentGlobal.fcd);
+                 renderer.drawString(fcd, 650, 30, 1, 1, 1, 1, 20);
+            }
+            if (currentGlobal.bcd > 0) {
+                 String bcd = String.format("Bomb CD: %.1f", currentGlobal.bcd);
+                 renderer.drawString(bcd, 650, 60, 1, 1, 1, 1, 20);
+            }
+            
+            if (currentGlobal.over) {
+                renderer.drawString("Game Over", 280, 250, 1, 0, 0, 1, 48);
+            }
+        }
     }
     
     private void renderHealthBars() {
@@ -134,7 +167,6 @@ public class ReplayScene extends Scene {
                 float yOffset = -30;
                 float x = pos.x - (barWidth / 2);
                 
-                // Simple heuristic to guess offset based on name
                 if (obj.getName().contains("Enemy")) {
                     barWidth = 25;
                     yOffset = -10;
@@ -152,9 +184,9 @@ public class ReplayScene extends Scene {
     private void handleFileSelection() {
         if (recordingFiles == null || recordingFiles.isEmpty()) return;
 
-        if (input.isKeyJustPressed(38)) { // UP
+        if (input.isKeyJustPressed(38) || input.isKeyJustPressed(87)) { // UP Arrow or W
             selectedIndex = (selectedIndex - 1 + recordingFiles.size()) % recordingFiles.size();
-        } else if (input.isKeyJustPressed(40)) { // DOWN
+        } else if (input.isKeyJustPressed(40) || input.isKeyJustPressed(83)) { // DOWN Arrow or S
             selectedIndex = (selectedIndex + 1) % recordingFiles.size();
         } else if (input.isKeyJustPressed(10) || input.isKeyJustPressed(32)) { // ENTER/SPACE
             recordingPath = recordingFiles.get(selectedIndex).getAbsolutePath();
@@ -163,7 +195,7 @@ public class ReplayScene extends Scene {
     }
 
     private void renderFileList() {
-        renderer.drawString("SELECT RECORDING", 300, 50, 1, 1, 1, 1, 30);
+        renderer.drawString("SELECT RECORDING", 250, 50, 1, 1, 1, 1, 30);
         if (recordingFiles == null || recordingFiles.isEmpty()) {
             renderer.drawString("No recordings found.", 300, 300, 1, 0.5f, 0.5f, 1, 24);
             return;
@@ -173,7 +205,7 @@ public class ReplayScene extends Scene {
             String name = recordingFiles.get(i).getName();
             float y = startY + i * 30;
             if (i == selectedIndex) {
-                renderer.drawRect(100, y, 600, 25, 0.3f, 0.3f, 0.4f, 0.8f);
+                renderer.drawRect(100, y - 14, 600, 25, 0.3f, 0.3f, 0.4f, 0.8f);
                 renderer.drawString("> " + name, 110, y+5, 1, 1, 0, 1, 20);
             } else {
                 renderer.drawString(name, 120, y+5, 0.8f, 0.8f, 0.8f, 1, 20);
@@ -189,6 +221,18 @@ public class ReplayScene extends Scene {
                 if (line.contains("\"type\":\"keyframe\"")) {
                     Keyframe kf = new Keyframe();
                     kf.t = RecordingJson.parseDouble(RecordingJson.field(line, "t"));
+                    
+                    // Global Parsing
+                    String gStr = RecordingJson.field(line, "global");
+                    if (gStr != null) {
+                        kf.global = new Keyframe.GlobalInfo();
+                        kf.global.score = (int)RecordingJson.parseDouble(RecordingJson.field(gStr, "score"));
+                        kf.global.fcd = (float)RecordingJson.parseDouble(RecordingJson.field(gStr, "fcd"));
+                        kf.global.bcd = (float)RecordingJson.parseDouble(RecordingJson.field(gStr, "bcd"));
+                        String overStr = RecordingJson.field(gStr, "over");
+                        kf.global.over = "true".equalsIgnoreCase(overStr);
+                    }
+
                     int idx = line.indexOf("\"entities\":[");
                     if (idx >= 0) {
                         int bracket = line.indexOf('[', idx);
@@ -204,12 +248,17 @@ public class ReplayScene extends Scene {
                             ei.w = (float)RecordingJson.parseDouble(RecordingJson.field(p, "w"));
                             ei.h = (float)RecordingJson.parseDouble(RecordingJson.field(p, "h"));
                             
-                            // Health Parsing
                             String hpStr = RecordingJson.field(p, "hp");
                             if (hpStr != null) {
                                 ei.hp = (float)RecordingJson.parseDouble(hpStr);
                                 ei.maxHp = (float)RecordingJson.parseDouble(RecordingJson.field(p, "maxHp"));
                             }
+                            
+                            String vStr = RecordingJson.field(p, "v");
+                            if (vStr != null) ei.v = (int)RecordingJson.parseDouble(vStr);
+                            
+                            String invStr = RecordingJson.field(p, "inv");
+                            if (invStr != null) ei.inv = (int)RecordingJson.parseDouble(invStr);
 
                             String colorArr = RecordingJson.field(p, "color");
                             if (colorArr != null && colorArr.startsWith("[")) {
@@ -244,7 +293,6 @@ public class ReplayScene extends Scene {
             obj = EntityFactory.createRenderableVisual(renderer, rawId, ei.rt, ei.w, ei.h, ei.r, ei.g, ei.b, ei.a);
         }
         
-        // IMPORTANT: Set the exact ID from recording so we can map it
         obj.setName(ei.id); 
         
         TransformComponent tc = obj.getComponent(TransformComponent.class);
@@ -261,16 +309,10 @@ public class ReplayScene extends Scene {
     private void syncObjects(Keyframe a, Keyframe b, float u) {
         Set<String> presentIds = new HashSet<>();
         
-        // We mainly sync based on Frame A (or B? usually A for existence, interpolate to B)
-        // Ideally we check all entities in A and B.
-        // Simplification: Exist if in A. Lerp to B if in B, else stay at A or lerp to last known?
-        // Better: Exist if in A OR B?
-        // Let's assume exist if in A.
-        
         for (String id : a.entities.keySet()) {
             presentIds.add(id);
             Keyframe.EntityInfo infoA = a.entities.get(id);
-            Keyframe.EntityInfo infoB = b.entities.get(id); // Might be null if destroyed
+            Keyframe.EntityInfo infoB = b.entities.get(id); 
             
             GameObject obj = activeObjects.get(id);
             if (obj == null) {
@@ -289,22 +331,44 @@ public class ReplayScene extends Scene {
             TransformComponent tc = obj.getComponent(TransformComponent.class);
             if (tc != null) tc.setPosition(new Vector2(x, y));
             
-            // Sync Health
+            // Sync Visuals
+            com.gameengine.components.RenderComponent rc = obj.getComponent(com.gameengine.components.RenderComponent.class);
+            if (rc != null) {
+                float wA = infoA.w;
+                float hA = infoA.h;
+                float wB = (infoB != null) ? infoB.w : wA;
+                float hB = (infoB != null) ? infoB.h : hA;
+                float w = (float)((1.0 - u) * wA + u * wB);
+                float h = (float)((1.0 - u) * hA + u * hB);
+                rc.setSize(new Vector2(w, h));
+
+                float rA = infoA.r; float gA = infoA.g; float bA = infoA.b; float aA = infoA.a;
+                float rB = (infoB != null) ? infoB.r : rA;
+                float gB = (infoB != null) ? infoB.g : gA;
+                float bB = (infoB != null) ? infoB.b : bA;
+                float aB = (infoB != null) ? infoB.a : aA;
+                float r = (float)((1.0 - u) * rA + u * rB);
+                float g = (float)((1.0 - u) * gA + u * gB);
+                float blue = (float)((1.0 - u) * bA + u * bB);
+                float alpha = (float)((1.0 - u) * aA + u * aB);
+                rc.setColor(r, g, blue, alpha);
+                
+                rc.setVisible(infoA.v == 1);
+            }
+
+            // Sync Health and Invincibility
             HealthComponent hc = obj.getComponent(HealthComponent.class);
             if (hc != null) {
-                // Linear interp health for smoothness? or just snap? Snap is safer for discrete events.
                 hc.currentHealth = infoA.hp;
                 hc.maxHealth = infoA.maxHp;
+                hc.isInvincible = (infoA.inv == 1);
             }
         }
         
-        // Destroy objects not in current frame
-        // (Using Iterator to remove safely)
         Iterator<Map.Entry<String, GameObject>> it = activeObjects.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<String, GameObject> entry = it.next();
             if (!presentIds.contains(entry.getKey())) {
-                // Object disappeared
                 removeGameObject(entry.getValue());
                 it.remove();
             }

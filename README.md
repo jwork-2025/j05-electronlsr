@@ -3,6 +3,10 @@
 
 下载脚本失败了，分析后发现应该下载 native-linux 而非 native-linux-x86_64！我对脚本进行了修改。
 
+已经按照要求完成了游戏的录制与回放功能。以下是原 README 内容。
+
+---
+
 本版本采用 LWJGL + OpenGL 实现纯 GPU 渲染，窗口与输入基于 GLFW，文本渲染通过 AWT 字体离屏生成纹理后在 OpenGL 中批量绘制。
 
 

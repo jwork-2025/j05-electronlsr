@@ -11,12 +11,52 @@ public final class RecordingJson {
         if (i < 0) return null;
         int c = json.indexOf(':', i);
         if (c < 0) return null;
-        int end = c + 1;
-        int comma = json.indexOf(',', end);
-        int brace = json.indexOf('}', end);
-        int j = (comma < 0) ? brace : (brace < 0 ? comma : Math.min(comma, brace));
-        if (j < 0) j = json.length();
-        return json.substring(end, j).trim();
+        int start = c + 1;
+        
+        // Skip whitespace
+        while (start < json.length() && Character.isWhitespace(json.charAt(start))) {
+            start++;
+        }
+        
+        if (start >= json.length()) return null;
+        
+        int end = start;
+        char firstChar = json.charAt(start);
+        
+        if (firstChar == '[' || firstChar == '{') {
+            // Handle Array or Object
+            int depth = 0;
+            for (; end < json.length(); end++) {
+                char ch = json.charAt(end);
+                if (ch == '[' || ch == '{') depth++;
+                else if (ch == ']' || ch == '}') {
+                    depth--;
+                    if (depth == 0) {
+                        end++; // Include the closing bracket
+                        return json.substring(start, end);
+                    }
+                }
+            }
+        } else if (firstChar == '"') {
+            // Handle String
+            end++;
+            while (end < json.length()) {
+                if (json.charAt(end) == '"' && json.charAt(end - 1) != '\\') {
+                    end++;
+                    return json.substring(start, end);
+                }
+                end++;
+            }
+        } else {
+            // Handle Number/Boolean/Null (read until comma or closing brace)
+            for (; end < json.length(); end++) {
+                char ch = json.charAt(end);
+                if (ch == ',' || ch == '}') {
+                    return json.substring(start, end).trim();
+                }
+            }
+        }
+        return null;
     }
 
     public static String stripQuotes(String s) {

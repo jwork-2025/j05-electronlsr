@@ -112,7 +112,7 @@ public class GameScene extends Scene {
         renderer.drawRect(0, 0, 800, 600, 0.1f, 0.1f, 0.2f, 1.0f);
         super.render();
         renderHealthBars();
-        renderBombEffects();
+        // Removed renderBombEffects call as we now use objects
         
         renderer.drawString("Score: " + score, 10, 30, 1, 1, 1, 1, 24);
 
@@ -154,35 +154,6 @@ public class GameScene extends Scene {
         }
     }
     
-    private void renderBombEffects() {
-        for (GameObject bomb : getGameObjects()) {
-            if (bomb.getName().equals("Bomb")) {
-                BombComponent bombComp = bomb.getComponent(BombComponent.class);
-                if (bombComp == null) continue;
-                RenderComponent renderComp = bomb.getComponent(RenderComponent.class);
-                if (renderComp == null) continue;
-
-                if (bombComp.currentState == BombComponent.State.ARMING) {
-                    boolean isVisible = (int)(bombComp.armingTimer * 10) % 2 == 0;
-                    renderComp.setVisible(isVisible);
-                } else {
-                    renderComp.setVisible(true);
-                }
-
-                if (bombComp.currentState == BombComponent.State.EXPLODING) {
-                    TransformComponent transform = bomb.getComponent(TransformComponent.class);
-                    if (transform == null) continue;
-                    float maxRadius = 150;
-                    float progress = 1.0f - (bombComp.explosionVfxTimer / 0.5f);
-                    float currentRadius = maxRadius * progress;
-                    float alpha = 1.0f - progress;
-                    renderer.drawCircle(transform.getPosition().x, transform.getPosition().y, currentRadius, 32, 1, 1, 0, alpha);
-                    renderComp.setVisible(false);
-                }
-            }
-        }
-    }
-
     private void renderHealthBars() {
         for (GameObject obj : getGameObjects()) {
             if (obj.hasComponent(HealthComponent.class)) {
@@ -269,6 +240,7 @@ public class GameScene extends Scene {
                 if (bombComp == null) continue;
                 TransformComponent bombTransform = bomb.getComponent(TransformComponent.class);
                 if (bombTransform == null) continue;
+                RenderComponent renderComp = bomb.getComponent(RenderComponent.class);
 
                 if (bombComp.currentState == BombComponent.State.TRAVELING) {
                     if (bombTransform.getPosition().distance(bombComp.targetPosition) < 10) {
@@ -277,8 +249,19 @@ public class GameScene extends Scene {
                     }
                 } else if (bombComp.currentState == BombComponent.State.ARMING) {
                     bombComp.armingTimer -= deltaTime;
+                    // Blink Effect
+                    if (renderComp != null) {
+                        boolean isVisible = (int)(bombComp.armingTimer * 10) % 2 == 0;
+                        renderComp.setVisible(isVisible);
+                    }
+                    
                     if (bombComp.armingTimer <= 0) {
                         bombComp.currentState = BombComponent.State.EXPLODING;
+                        if (renderComp != null) renderComp.setVisible(false); // Hide bomb body
+                        
+                        // SPAWN EXPLOSION OBJECT FOR RECORDING
+                        createExplosionEffect(bombTransform.getPosition());
+
                         float innerRadius = 75;
                         float outerRadius = 150;
                         Vector2 bombPos = bombTransform.getPosition();
@@ -311,6 +294,80 @@ public class GameScene extends Scene {
                 }
             }
         }
+    }
+    
+    private void createExplosionEffect(Vector2 pos) {
+        GameObject explosion = new GameObject("Explosion") {
+            float timer = 0.5f;
+            float maxTimer = 0.5f;
+            @Override
+            public void update(float dt) {
+                super.update(dt);
+                timer -= dt;
+                if (timer <= 0) destroy();
+                
+                RenderComponent rc = getComponent(RenderComponent.class);
+                if (rc != null) {
+                    float progress = 1.0f - (timer / maxTimer);
+                    float maxRadius = 150;
+                    float currentRadius = maxRadius * progress;
+                    rc.setSize(new Vector2(currentRadius*2, currentRadius*2)); // Diameter
+                    
+                    RenderComponent.Color c = rc.getColor();
+                    c.a = 1.0f - progress;
+                    rc.setColor(c);
+                }
+            }
+        };
+        explosion.addComponent(new TransformComponent(pos));
+        // Center alignment handled by renderer usually drawing top-left, so we might need offset correction
+        // But for simple circle renderer drawing at center + radius, let's assume Transform is center.
+        // If Renderer draws Circle at (x,y) as top-left, we need to adjust. 
+        // Looking at Renderer.drawCircle: g.fillOval((int) (x - radius), (int) (y - radius)... 
+        // It draws centered on x,y if we pass x,y. 
+        // RenderComponent calls: renderer.drawCircle(position.x + size.x/2, position.y + size.y/2, size.x/2...
+        // So RenderComponent assumes Position is Top-Left.
+        // We need to adjust Position to keep center fixed as it grows.
+        
+        // Let's make a custom explosion that handles its own centering or just use a simple logic:
+        // If we change size, we must change position to keep center.
+        // Or simplify: just let it grow from top-left? No, looks bad.
+        // Let's just set it as a generic object with a specific tag and handle visual in update.
+        // But wait, RenderComponent updates from Transform. 
+        
+        // Let's use a simpler approach: Static size explosion or just accept top-left growth for now 
+        // to ensure it is recorded as a standard object.
+        // Actually, let's correct the position in update.
+        
+        RenderComponent rc = explosion.addComponent(new RenderComponent(
+            RenderComponent.RenderType.CIRCLE,
+            new Vector2(10, 10),
+            new RenderComponent.Color(1.0f, 1.0f, 0.0f, 1.0f)
+        ));
+        rc.setRenderer(renderer);
+        
+        // Add a script to center it
+        explosion.addComponent(new com.gameengine.core.Component() {
+            Vector2 center = new Vector2(pos);
+            @Override
+            public void initialize() {}
+            @Override
+            public void render() {}
+            @Override
+            public void update(float dt) {
+                if (getOwner() == null) return;
+                RenderComponent r = getOwner().getComponent(RenderComponent.class);
+                if (r != null) {
+                    Vector2 sz = r.getSize();
+                    TransformComponent t = getOwner().getComponent(TransformComponent.class);
+                    if (t != null) {
+                        t.setPosition(new Vector2(center.x - sz.x/2, center.y - sz.y/2));
+                    }
+                }
+            }
+        });
+
+        addGameObject(explosion);
     }
 
     private void checkCollisionsAndScore() {

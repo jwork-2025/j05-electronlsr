@@ -9,11 +9,13 @@ import java.util.*;
 public class GameObject {
     protected boolean active;
     protected String name;
+    protected final String uuid;
     protected final List<Component<?>> components;
     
     public GameObject() {
         this.active = true;
         this.name = "GameObject";
+        this.uuid = UUID.randomUUID().toString();
         this.components = new ArrayList<>();
     }
     
@@ -128,5 +130,9 @@ public class GameObject {
     
     public void setName(String name) {
         this.name = name;
+    }
+    
+    public String getUuid() {
+        return uuid;
     }
 }
